@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grimm Editor — Hollow Knight save editor</title>
+<meta name="description" content="Free Hollow Knight save editor. Open your user1.dat and edit geo, masks, charms, abilities, the Hunter's Journal, world objects and every flag. Runs entirely in your browser.">
+<meta property="og:title" content="Grimm Editor — Hollow Knight save editor">
+<meta property="og:description" content="Edit every part of your Hollow Knight save, right in your browser. Your save never leaves your device.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://grimmeditor.com/">
+<meta name="theme-color" content="#0b0406">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@500;700&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* Grimm Troupe palette: tent black, troupe crimson, flame scarlet, mask bone */
+:root{
+  --black:#0b0406; --tent:#1a070c; --panel:#200a10; --raise:#2e0d16; --line:#4f1424;
+  --crimson:#8c0f22; --scarlet:#e3172f; --ember:#ff5a3c; --bone:#f1e6dc; --ash:#b8a2a6;
+  --bg:var(--black); --text:var(--bone); --muted:var(--ash); --accent:var(--scarlet);
+  --accent-soft:rgba(227,23,47,.15); --warn:#ffb15c; --ok:#9ccfa9;
+  --display:"Cinzel", "Trajan Pro", Georgia, serif;
+  --deco:"Cinzel Decorative", "Cinzel", Georgia, serif;
+  --body:"Alegreya Sans", "Gill Sans", "Segoe UI", system-ui, sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f2e8e0; --tent:#e9d6cf; --panel:#fbf5f0; --raise:#efdcd5; --line:#d6aeb4;
+    --text:#1d080d; --muted:#6b4a52; --accent:#a10d24; --accent-soft:rgba(161,13,36,.1);
+    --crimson:#a10d24; --warn:#8f5200; --ok:#2c7146;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f2e8e0; --tent:#e9d6cf; --panel:#fbf5f0; --raise:#efdcd5; --line:#d6aeb4;
+  --text:#1d080d; --muted:#6b4a52; --accent:#a10d24; --accent-soft:rgba(161,13,36,.1);
+  --crimson:#a10d24; --warn:#8f5200; --ok:#2c7146;
+}
+:root[data-theme="dark"]{
+  --bg:var(--black); --tent:#1a070c; --panel:#200a10; --raise:#2e0d16; --line:#4f1424;
+  --text:var(--bone); --muted:var(--ash); --accent:var(--scarlet); --accent-soft:rgba(227,23,47,.15);
+  --crimson:#8c0f22; --warn:#ffb15c; --ok:#9ccfa9;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font:17px/1.55 var(--body);min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.8em}
+
+/* Header: troupe tent stripes */
+header{position:relative;padding:22px clamp(16px,4vw,40px) 20px;border-bottom:3px solid var(--crimson);
+  background:
+    linear-gradient(180deg, transparent 40%, var(--bg) 100%),
+    repeating-linear-gradient(90deg, var(--tent) 0 44px, var(--crimson) 44px 88px);
+}
+:root:not([data-theme="light"]) header{background:
+    linear-gradient(180deg, rgba(11,4,6,.55) 0%, var(--bg) 100%),
+    repeating-linear-gradient(90deg, #120408 0 44px, #5c0a17 44px 88px);}
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) header{background:
+    linear-gradient(180deg, rgba(242,232,224,.7) 0%, var(--bg) 100%),
+    repeating-linear-gradient(90deg, #e9d6cf 0 44px, #c97c88 44px 88px);} }
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:16px 24px}
+.brand{display:flex;align-items:center;gap:14px;margin-right:auto}
+.brand svg{width:52px;height:52px;flex:none;filter:drop-shadow(0 0 10px rgba(227,23,47,.55))}
+.brand h1{font:700 clamp(1.6rem,3.6vw,2.4rem)/1 var(--deco);letter-spacing:.04em;margin:0;color:var(--text);text-shadow:0 2px 0 var(--crimson)}
+.brand p{margin:5px 0 0;color:var(--muted);font-size:.95rem}
+.flame{transform-origin:50% 90%;animation:flicker 3.2s ease-in-out 1}
+@keyframes flicker{0%{transform:scale(.2);opacity:0}40%{transform:scale(1.15,1.3);opacity:1}60%{transform:scale(.95,1.05)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){.flame{animation:none}}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--raise);padding:8px 14px;border-radius:6px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.dirty{font-size:.9rem;color:var(--warn)}
+
+/* Lookup */
+.lookup{position:relative;margin-top:16px;max-width:620px}
+.lookup input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.lookup input:focus{border-color:var(--accent)}
+.results{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);background:var(--panel);border:1px solid var(--accent);border-radius:8px;max-height:min(60vh,440px);overflow:auto;box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.results button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:9px 14px;cursor:pointer}
+.results button:last-child{border-bottom:0}
+.results button:hover,.results button.sel{background:var(--accent-soft)}
+.results .where{float:right;color:var(--muted);font-size:.85rem;margin-left:10px}
+.results .d{display:block;color:var(--muted);font-size:.88rem}
+.results .none{padding:12px 14px;color:var(--muted)}
+
+/* Empty state */
+.drop{max-width:720px;margin:clamp(32px,7vh,80px) auto;padding:0 20px;text-align:center}
+.drop h2{font:500 clamp(1.4rem,3vw,1.9rem)/1.25 var(--display);margin:0 0 12px}
+.zone{margin:28px 0;border:2px dashed var(--line);border-radius:14px;padding:44px 20px;cursor:pointer;background:var(--panel)}
+.zone.over,.zone:hover{border-color:var(--accent);background:var(--accent-soft)}
+.paths{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;font-size:.95rem}
+.paths dt{font-weight:700;margin-top:8px}
+.paths dd{margin:2px 0 0;overflow-x:auto}
+.error{color:var(--accent);font-weight:700}
+
+/* Workspace */
+.work{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:calc(100vh - 160px)}
+nav{border-right:1px solid var(--line);padding:18px 10px;position:sticky;top:env(safe-area-inset-top,0px);align-self:start}
+nav button{display:block;width:100%;text-align:left;background:none;border:0;border-left:3px solid transparent;padding:8px 14px;cursor:pointer;color:var(--muted);font-size:1rem}
+nav button:hover{color:var(--text)}
+nav button[aria-current="true"]{color:var(--text);border-left-color:var(--accent);background:var(--accent-soft)}
+main{padding:24px clamp(16px,4vw,44px) 70px;min-width:0}
+main h2{font:500 1.6rem/1.2 var(--display);margin:0 0 6px}
+.lede{color:var(--muted);margin:0 0 16px;max-width:70ch}
+h3{font:500 1.12rem/1.3 var(--display);margin:30px 0 10px}
+
+/* Section info panel */
+details.info{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--crimson);border-radius:8px;padding:2px 18px;margin:0 0 22px;max-width:78ch}
+details.info summary{cursor:pointer;padding:10px 0;font-weight:700}
+details.info p{margin:0 0 10px}
+details.info ul{margin:0 0 12px;padding-left:20px}
+details.info li{margin:4px 0}
+details.info h4{margin:12px 0 4px;font:700 1rem/1.3 var(--body)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
+.field{display:flex;flex-direction:column;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.field .head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.field .lbl{min-width:0}
+.field .lbl span{display:block;font-weight:500}
+.field .lbl code{color:var(--muted);word-break:break-all}
+.field .help{color:var(--muted);font-size:.88rem;line-height:1.4;margin:0}
+.field.missing{opacity:.5}
+.field input[type=number],.field input[type=text],.field select{width:9.5em;max-width:55%;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:5px 8px}
+.field textarea{width:100%;min-height:70px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace}
+input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);flex:none;cursor:pointer}
+.note{font-size:.92rem;color:var(--muted)}
+.flash{animation:flash 1.6s ease-out 1}
+@keyframes flash{0%,40%{box-shadow:0 0 0 2px var(--accent),0 0 22px rgba(227,23,47,.6)}100%{box-shadow:none}}
+@media (prefers-reduced-motion: reduce){.flash{animation:none;outline:2px solid var(--accent)}}
+
+/* Charms */
+.charms{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.charm{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.charm.eq{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.charm .nm{font-weight:700;display:flex;justify-content:space-between;gap:8px}
+.charm .nm small{color:var(--muted);font-weight:400}
+.charm .cd{color:var(--muted);font-size:.86rem;line-height:1.35;margin:4px 0 2px}
+.charm .row{display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:.95rem}
+.charm input[type=number]{width:4.2em;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:3px 6px}
+.bulk{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:0 0 22px}
+.tool{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--crimson);border-radius:10px;padding:4px 16px 6px}
+.tool h3{margin:12px 0 4px}
+.tool .help{color:var(--muted);font-size:.9rem;margin:0 0 12px}
+.tool select,.tool input[type=number]{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 10px}
+.tool select{flex:1 1 200px}
+.inline{display:flex;align-items:center;gap:8px}
+.notches{font-size:1.05rem;margin:0 0 14px}
+.notches b{color:var(--accent)}
+
+/* Tables */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.toolbar input[type=search]{flex:1 1 240px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 12px;cursor:pointer;font-size:.92rem}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+th,td{padding:7px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:var(--raise);font-weight:700;position:sticky;top:0}
+td input[type=number]{width:5.5em;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:3px 6px}
+tr:last-child td{border-bottom:0}
+.raw{width:100%;min-height:60vh;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace}
+
+.ibtn{display:inline-grid;place-items:center;width:20px;height:20px;margin-left:6px;border-radius:50%;border:1px solid var(--accent);background:transparent;color:var(--accent);font:italic 700 13px/1 Georgia,serif;cursor:pointer;vertical-align:middle;padding:0;flex:none}
+.ibtn:hover,.ibtn[aria-expanded="true"]{background:var(--accent);color:#fff}
+.lname{display:flex;align-items:center;gap:2px;word-break:break-all}
+.tip{position:fixed;z-index:40;max-width:min(400px,calc(100vw - 16px));background:var(--raise);color:var(--text);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:.92rem;line-height:1.45;box-shadow:0 10px 26px rgba(0,0,0,.45)}
+.tip p{margin:0 0 8px}.tip p:last-of-type{margin-bottom:0}
+.tip .guess{display:block;margin-top:6px;color:var(--muted);font-size:.82rem;font-style:italic}
+.jn{display:block;font-weight:500}
+.jid{color:var(--muted)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.wide-select,.custom-in{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 8px}
+.backup{text-align:left;background:var(--accent-soft);border:2px solid var(--accent);border-radius:10px;padding:16px 20px;margin:0 0 30px}
+.backup h2{font:700 1.3rem/1.25 var(--display);margin:0 0 8px}
+.backup p{margin:0}
+.danger{background:var(--accent);color:#fff;font:700 clamp(1rem,2.4vw,1.25rem)/1.35 var(--display);letter-spacing:.02em;padding:14px 18px;border-radius:8px;margin:0 0 18px;border:2px solid #fff3;box-shadow:0 0 24px rgba(227,23,47,.35)}
+.guide-home{text-align:left}
+.guide-home h3{text-align:left}
+.platforms{display:grid;gap:8px}
+.platform{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:2px 16px}
+.platform summary{cursor:pointer;padding:10px 0;font-weight:700;display:flex;align-items:center;gap:10px}
+.platform .tag{font-size:.8rem;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+.pathrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 6px}
+.pathrow code{overflow-x:auto;max-width:100%;padding:4px 8px;background:var(--bg);border-radius:4px}
+.platform ol{margin:4px 0 12px;padding-left:22px}
+.btn.small{padding:4px 10px;font-size:.88rem}
+.backup-steps{text-align:left;max-width:70ch;padding-left:22px}
+.backup-steps li{margin:6px 0}
+.site-foot{border-top:1px solid var(--line);padding:22px clamp(16px,4vw,40px) calc(28px + env(safe-area-inset-bottom,0px));color:var(--muted);font-size:.9rem;max-width:100%}
+.site-foot p{margin:0 0 6px;max-width:80ch}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--raise);border:1px solid var(--accent);padding:10px 18px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;z-index:30}
+.toast.show{opacity:1}
+[hidden]{display:none!important}
+
+@media (max-width:760px){
+  .work{grid-template-columns:1fr}
+  nav{position:static;display:flex;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:6px}
+  nav button{width:auto;white-space:nowrap;border-left:0;border-bottom:3px solid transparent}
+  nav button[aria-current="true"]{border-bottom-color:var(--accent)}
+  .field input[type=number],.field input[type=text],.field select{width:8em}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div class="brand">
+      <svg viewBox="0 0 48 48" aria-hidden="true">
+        <path class="flame" d="M24 3c3 7 11 11 11 22a11 11 0 0 1-22 0c0-6 3-10 5-14 1 4 3 5 5 6-1-5-1-9 1-14z" fill="var(--accent)"/>
+        <path d="M24 24c2.4 3 4.6 4.4 4.6 8.6a4.6 4.6 0 0 1-9.2 0c0-3.4 2.2-5.4 4.6-8.6z" fill="#ffd2b8" opacity=".85"/>
+      </svg>
+      <div>
+        <h1>Grimm Editor</h1>
+        <p>Open, edit and re-save Hollow Knight save files</p>
+      </div>
+    </div>
+    <div class="actions">
+      <span id="dirty" class="dirty" hidden>Unsaved changes</span>
+      <button class="btn" id="openBtn">Open save…</button>
+      <button class="btn" id="exportJson" disabled>Export JSON</button>
+      <button class="btn primary" id="saveBtn" disabled>Save .dat</button>
+      <input type="file" id="fileIn" accept=".dat,.json,.txt" hidden>
+    </div>
+  </div>
+  <div class="lookup">
+    <input type="search" id="lookup" placeholder="Look up any setting — try “dash”, “grimm”, “mask”, “notch”…" aria-label="Look up a setting" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="results">
+    <div class="results" id="results" role="listbox" hidden></div>
+  </div>
+</header>
+
+<section class="drop" id="empty">
+  <div class="backup" role="note">
+    <h2>Back up your save before you edit it</h2>
+    <p>Editing can break a save beyond repair. Before you change anything, <strong>close Hollow Knight</strong> and <strong>copy your save file somewhere safe</strong>, like your desktop or a USB drive. If something goes wrong, copy it back over the edited one.</p>
+  </div>
+  <h2>Drop a save file to begin</h2>
+  <p class="lede" style="margin:0 auto">Slot 1 is <code>user1.dat</code>, slot 2 is <code>user2.dat</code>, and so on up to <code>user4.dat</code>. Plain JSON saves also work. Your file never leaves this page.</p>
+  <div class="zone" id="zone" tabindex="0" role="button">Drag a save here, or click to choose one</div>
+  <p id="loadErr" class="error" hidden></p>
+  <div id="guideHome" class="guide-home"></div>
+</section>
+
+<div class="work" id="work" hidden>
+  <nav id="nav" aria-label="Sections"></nav>
+  <main id="main"></main>
+</div>
+<footer class="site-foot">
+  <p><strong>Your save stays on your device.</strong> Files are decrypted and edited entirely in your browser and are never uploaded anywhere.</p>
+  <p>Grimm Editor is a free fan-made tool. It is not affiliated with or endorsed by Team Cherry. Hollow Knight is a trademark of Team Cherry.</p>
+</footer>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+"use strict";
+/* ---------- Save format ----------
+   user*.dat = C# BinaryFormatter string record:
+   22-byte header + 7-bit length prefix + base64(AES-256-ECB(JSON, PKCS7)) + 0x0B */
+const HEADER = [0,1,0,0,0,255,255,255,255,1,0,0,0,0,0,0,0,6,1,0,0,0];
+const KEY = CryptoJS.enc.Utf8.parse("UKu52ePUBwetZ9wNX88o54dnfKRu0T1l");
+const AES_OPTS = {mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7};
+
+function decodeSave(bytes){
+  let i = 0; while (i < bytes.length && /\s/.test(String.fromCharCode(bytes[i]))) i++;
+  if (bytes[i] === 0x7B) return {json: new TextDecoder().decode(bytes), format: "json"};
+  for (let h = 0; h < HEADER.length; h++)
+    if (bytes[h] !== HEADER[h]) throw new Error("This doesn't look like a Hollow Knight save: the file header doesn't match.");
+  let body = bytes.subarray(HEADER.length, bytes.length - 1);
+  let p = 0; while (body[p] & 0x80) p++; p++;
+  const b64 = new TextDecoder().decode(body.subarray(p));
+  const dec = CryptoJS.AES.decrypt({ciphertext: CryptoJS.enc.Base64.parse(b64)}, KEY, AES_OPTS);
+  const json = dec.toString(CryptoJS.enc.Utf8);
+  if (!json) throw new Error("Decryption produced no data. The file may be damaged or from an unsupported platform.");
+  return {json, format: "dat"};
+}
+function encodeSave(json){
+  const enc = CryptoJS.AES.encrypt(CryptoJS.enc.Utf8.parse(json), KEY, AES_OPTS);
+  const b64 = new TextEncoder().encode(enc.ciphertext.toString(CryptoJS.enc.Base64));
+  const len = []; let v = b64.length;
+  while (v >= 0x80){ len.push((v & 0x7F) | 0x80); v >>>= 7; } len.push(v);
+  const out = new Uint8Array(HEADER.length + len.length + b64.length + 1);
+  out.set(HEADER, 0); out.set(len, HEADER.length); out.set(b64, HEADER.length + len.length);
+  out[out.length - 1] = 0x0B;
+  return out;
+}
+
+/* ---------- Game data and help text ---------- */
+const CHARMS = [
+ ["Gathering Swarm","Draws loose geo to you."],["Wayward Compass","Shows your position on the map."],
+ ["Grubsong","Gain soul when taking damage."],["Stalwart Shell","Longer invulnerability after a hit."],
+ ["Baldur Shell","Blocks hits while focusing."],["Fury of the Fallen","More nail damage at one mask."],
+ ["Quick Focus","Faster healing."],["Lifeblood Heart","Adds lifeblood masks at benches."],
+ ["Lifeblood Core","Adds more lifeblood masks."],["Defender's Crest","Leaves a damaging cloud behind you."],
+ ["Flukenest","Vengeful Spirit fires a swarm of flukes."],["Thorns of Agony","Lashes out when you're hit."],
+ ["Mark of Pride","Longer nail reach."],["Steady Body","No recoil when striking."],
+ ["Heavy Blow","More knockback on hits."],["Sharp Shadow","Shadow dash deals damage."],
+ ["Spore Shroom","Focusing releases spores."],["Longnail","Longer nail reach."],
+ ["Shaman Stone","Stronger spells."],["Soul Catcher","More soul per nail hit."],
+ ["Soul Eater","Even more soul per nail hit."],["Glowing Womb","Spends soul to spawn hatchlings."],
+ ["Fragile Heart","Extra masks; breaks on death until made unbreakable."],["Fragile Greed","More geo from enemies; breaks on death."],
+ ["Fragile Strength","More nail damage; breaks on death."],["Nailmaster's Glory","Faster nail art charge."],
+ ["Joni's Blessing","More masks, but they become lifeblood and can't heal."],["Shape of Unn","Move while focusing."],
+ ["Hiveblood","Slowly regenerates the last mask lost."],["Dream Wielder","Faster Dream Nail, more essence."],
+ ["Dashmaster","Shorter dash cooldown, downward dash."],["Quick Slash","Faster nail swings."],
+ ["Spell Twister","Spells cost less soul."],["Deep Focus","Slower healing, but heals two masks."],
+ ["Grubberfly's Elegy","Nail fires beams at full health."],["Kingsoul / Void Heart","Kingsoul regenerates soul; Void Heart unifies the void."],
+ ["Sprintmaster","Faster running."],["Dreamshield","An orbiting shield that blocks attacks."],
+ ["Weaversong","Summons weaverlings."],["Grimmchild / Carefree Melody","Troupe companion, or a chance to dodge hits."]
+];
+
+const DESC = {
+  geo:"Geo you're carrying right now. Huge values work, but the counter may display oddly past what the HUD is built for.",
+  maxHealth:"Total masks. You start with 5; finding every mask shard brings this to 9.",
+  maxHealthBase:"Masks before charm bonuses. Change it together with maxHealth, or the two will disagree after a bench.",
+  health:"Masks filled right now. Sitting on a bench refills them.",
+  heartPieces:"Shards toward the next mask, 0–3. Four shards become a mask.",
+  MPReserveMax:"Extra soul from vessels: 33 per full vessel, up to 99 (three vessels).",
+  vesselFragments:"Fragments toward the next soul vessel, 0–2. Three make a vessel.",
+  charmSlots:"Charm notches. You start with 3; the most you can earn is 11.",
+  ore:"Pale ore carried. Six exist; the Nailsmith takes them for upgrades.",
+  simpleKeys:"Simple keys carried. Four exist in the game.",
+  rancidEggs:"Traded to Confessor Jiji to call your shade to her.",
+  dreamOrbs:"Essence collected with the Dream Nail. The Seer's rewards go up to 2,400.",
+  grubsCollected:"Grubs freed, out of 46. The Grubfather's rewards follow this count.",
+  playTime:"Time played in seconds, shown on the save slot.",
+  completionPercentage:"Shown on the save slot. The game recalculates it as you play, so a hand edit may not last.",
+  respawnScene:"The room you wake in after dying or loading the save. Pick a bench to move your save point there. Picking a bench also sets the marker to RestBench. Rooms without a bench can leave you loading into nothing.",
+  respawnMarkerName:"The object you appear at inside the respawn room. For benches this is RestBench. Change it only if you know the room uses a different name.",
+  nailSmithUpgrades:"Nailsmith upgrades, 0–4. Choosing a nail here also sets nail damage (5 / 9 / 13 / 17 / 21).",
+  nailDamage:"Damage per nail hit. Normally follows the nail level.",
+  permadeathMode:"Steel Soul: 0 is a normal save, 1 is Steel Soul, 2 is a Steel Soul save that has died. Setting 2 back to 1 revives it.",
+  hasDash:"Mothwing Cloak, from Hornet's first fight in Greenpath.",
+  hasShadowDash:"Shade Cloak, from the Abyss. Lets you dash through enemies and shadow gates.",
+  hasWalljump:"Mantis Claw, from the Mantis Village.",
+  hasDoubleJump:"Monarch Wings, from the Ancient Basin.",
+  hasSuperDash:"Crystal Heart, from Crystal Peak.",
+  hasAcidArmour:"Isma's Tear, from the Royal Waterways. Lets you swim in acid.",
+  hasDreamNail:"Dream Nail, from the Resting Grounds.",
+  dreamNailUpgraded:"Awoken Dream Nail, the Seer's reward at 1,800 essence.",
+  hasDreamGate:"Dreamgate, the Seer's reward at 900 essence.",
+  hasSpell:"A general flag the game checks before showing spells. Turn it on if you give yourself a spell.",
+  hasNailArt:"A general flag for nail arts. Turn it on if you give yourself one.",
+  hasCyclone:"Cyclone Slash, from Nailmaster Mato.",
+  hasDashSlash:"One of the other two nail arts. The internal names don't line up neatly with the in-game names, so check in game.",
+  hasUpwardSlash:"One of the other two nail arts. The internal names don't line up neatly with the in-game names, so check in game.",
+  hasAllNailArts:"Set once all three nail arts are learned.",
+  fireballLevel:"0 none, 1 Vengeful Spirit, 2 Shade Soul.",
+  quakeLevel:"0 none, 1 Desolate Dive, 2 Descending Dark.",
+  screamLevel:"0 none, 1 Howling Wraiths, 2 Abyss Shriek.",
+  hasLantern:"Lumafly Lantern, sold by Sly. Lights dark areas.",
+  hasMap:"Lets you open the map at all.",
+  hasQuill:"Lets you record explored areas onto Cornifer's maps at benches.",
+  hasKingsBrand:"King's Brand, from Kingdom's Edge. Needed for late-game areas.",
+  hasTramPass:"Lets you ride the trams.",
+  hasCityKey:"City Crest. Opens the gate into the City of Tears.",
+  hasSlykey:"Shopkeeper's Key. Unlocks Sly's extra stock.",
+  hasWhiteKey:"Elegant Key. Opens a locked door in the Soul Sanctum.",
+  hasLoveKey:"Love Key. Opens the Tower of Love.",
+  trinket1:"Wanderer's Journals carried. Lemm buys them for 200 geo each.",
+  trinket2:"Hallownest Seals carried. Lemm pays 450 geo each.",
+  trinket3:"King's Idols carried. Lemm pays 800 geo each.",
+  trinket4:"Arcane Eggs carried. Lemm pays 1,200 geo each.",
+  royalCharmState:"Kingsoul progress: the fragments, then 3 for Kingsoul and 4 for Void Heart.",
+  gotShadeCharm:"Set when Void Heart is obtained.",
+  grimmChildLevel:"Grimmchild's growth through the troupe ritual, 1–4. 5 means you banished the troupe and hold Carefree Melody.",
+  fragileHealth_unbreakable:"Unbreakable Heart. Divine, in the troupe's camp, makes the fragile charms unbreakable.",
+  fragileGreed_unbreakable:"Unbreakable Greed.",
+  fragileStrength_unbreakable:"Unbreakable Strength.",
+  brokenCharm_23:"Fragile Heart broken by dying while equipped. The Leg Eater repairs it.",
+  brokenCharm_24:"Fragile Greed broken by dying while equipped.",
+  brokenCharm_25:"Fragile Strength broken by dying while equipped."
+};
+
+const INFO = {
+  overview:{about:"Your core stats: health, soul, nail, currency, collectibles, and where you wake up.",
+    tips:["Raise maxHealth and maxHealthBase together, then sit at a bench in game to refill.","The nail picker keeps nail damage in step with the upgrade level.","Steel Soul set to 2 means the run has ended; set it to 1 to bring a dead Steel Soul save back."],
+    cautions:["Respawn scene and marker must be real names from the game. A typo can leave the save loading into nothing.","Looking for audio, video or control options? Those aren't in save slots; the game keeps them separately."]},
+  abilities:{about:"Movement upgrades, the Dream Nail and its upgrades, spells, and nail arts.",
+    tips:["Paired flags (hasDash + canDash and so on) switch together so the ability actually works.","After giving yourself spells or nail arts, also turn on hasSpell or hasNailArt so they show up in the inventory."],
+    cautions:["Skipping abilities the story expects you to have can trigger events out of order, like NPCs who never show up."]},
+  charms:{about:"Every charm: whether you own it, whether it's equipped, and what it costs in notches. Below the grid are the special states for Kingsoul, Grimmchild and the fragile charms.",
+    tips:["Equipping here also updates the equipped list and notches-used count the game reads on load.","Use the All charms dropdown to give, remove or equip every charm in one step.","Set all costs to 0 to equip anything you like; Reset all costs puts the game's defaults back (Void Heart and Carefree Melody included).","Overcharming is allowed: you take double damage, same as in game."],
+    cautions:["Grimmchild's level is tied to the troupe questline. Jumping it forward can leave flames or the troupe tent in odd states."]},
+  items:{about:"Key items that unlock areas and shops, plus relics you can sell to Lemm.",
+    tips:["Relic counts are what you're carrying now, not what you've already sold.","Keys like the City Crest only open their doors; they don't move you past areas you haven't reached."],
+    cautions:["Some key items are consumed in game (the Simple Keys, the Love Key's door). Giving one back doesn't re-lock what it opened."]},
+  journal:{about:"The Hunter's Journal, one row per creature the game tracks.",
+    tips:["Kills left counts down; an entry is fully complete at 0.","Complete every entry marks each creature killed and zeroes the kills left, which also counts toward the Hunter's Mark."],
+    cautions:["Creatures show their in-game names, with the save's internal ID underneath. A few rarer IDs don't have a known in-game name yet and show a readable version of the ID instead."]},
+  world:{about:"Everything the world remembers: levers, breakable walls, one-way doors, collected items, and geo rocks, per scene.",
+    tips:["Click the i on any row to see what the object is and which area and room it's in.","Turn activated off to reset a lever or rebuild a wall.","Set a geo rock's hits left back up to refill it."],
+    cautions:["Semi-persistent objects reset when you rest at a bench anyway.","Resetting something the story relies on, like a boss arena door, can lock you in a room."]},
+  saves:{about:"How to back up your save, and where Hollow Knight keeps saves on each platform.",
+    tips:["Click a platform to open its steps. Copy path puts the folder path on your clipboard."],
+    cautions:["Always close the game before copying or replacing a save."]},
+  all:{about:"Every flag and value in playerData, each with an editor that matches its type.",
+    tips:["Click the i next to any field for a full description: what it is, its current value, how editing it behaves and which fields relate to it. Descriptions partly worked out from a field's name say so.","Search words like \"defeated\", \"map\", \"grimm\", \"stag\" or \"opened\" to find groups of related flags.","Lists and objects take JSON. Edits apply when you click away from the box."],
+    cautions:["Many flags only make sense together. When in doubt, compare a save from before and after the event you care about."]},
+  raw:{about:"The whole decrypted save as JSON, including sceneData.",
+    tips:["Paste in JSON from another tool, then apply."],
+    cautions:["Invalid JSON is rejected, so a typo can't corrupt the save, but valid JSON with missing keys can still confuse the game."]}
+};
+
+const OVERVIEW = [
+  ["Geo","geo"],["Masks (max)","maxHealth"],["Masks (base)","maxHealthBase"],["Current masks","health"],
+  ["Mask shards","heartPieces"],["Soul vessel reserve","MPReserveMax"],["Vessel fragments","vesselFragments"],
+  ["Charm notches","charmSlots"],["Pale ore","ore"],["Simple keys","simpleKeys"],["Rancid eggs","rancidEggs"],
+  ["Essence","dreamOrbs"],["Grubs freed","grubsCollected"],["Play time (seconds)","playTime"],
+  ["Completion %","completionPercentage"]
+];
+const ABILITIES = [
+  ["Mothwing Cloak",["hasDash","canDash"]],["Shade Cloak",["hasShadowDash","canShadowDash"]],
+  ["Mantis Claw",["hasWalljump","canWallJump"]],["Monarch Wings",["hasDoubleJump"]],
+  ["Crystal Heart",["hasSuperDash","canSuperDash"]],["Isma's Tear",["hasAcidArmour"]],
+  ["Dream Nail",["hasDreamNail"]],["Awoken Dream Nail",["dreamNailUpgraded"]],["Dreamgate",["hasDreamGate"]],
+  ["Spells unlocked",["hasSpell"]],["Nail arts unlocked",["hasNailArt"]],["Cyclone Slash",["hasCyclone"]],
+  ["Nail art",["hasDashSlash"]],["Nail art",["hasUpwardSlash"]],["All nail arts",["hasAllNailArts"]]
+];
+const ITEMS = [
+  ["Lumafly Lantern","hasLantern"],["Map","hasMap"],["Quill","hasQuill"],["King's Brand","hasKingsBrand"],
+  ["Tram Pass","hasTramPass"],["City Crest","hasCityKey"],["Shopkeeper's Key","hasSlykey"],
+  ["Elegant Key","hasWhiteKey"],["Love Key","hasLoveKey"],["Wanderer's Journals","trinket1"],
+  ["Hallownest Seals","trinket2"],["King's Idols","trinket3"],["Arcane Eggs","trinket4"]
+];
+const SPELLS = [
+  ["Fireball spell","fireballLevel",["None","Vengeful Spirit","Shade Soul"]],
+  ["Dive spell","quakeLevel",["None","Desolate Dive","Descending Dark"]],
+  ["Scream spell","screamLevel",["None","Howling Wraiths","Abyss Shriek"]]
+];
+// Default notch costs, charms 1–40. Kingsoul (36) is 5, but 0 once it becomes Void Heart.
+// Grimmchild (40) is 2, but 3 once it becomes Carefree Melody.
+const DEFAULT_COSTS = [1,1,1,2,2,2,3,2,3,1,3,1,3,1,2,2,1,2,3,2,4,2,2,2,3,1,4,2,4,1,2,3,2,4,3,5,1,3,2,2];
+function defaultCost(n){
+  if (n === 36 && (pd.gotShadeCharm === true || pd.royalCharmState === 4)) return 0;
+  if (n === 40 && pd.grimmChildLevel === 5) return 3;
+  return DEFAULT_COSTS[n-1];
+}
+const NAILS = ["Old Nail","Sharpened Nail","Channelled Nail","Coiled Nail","Pure Nail"];
+const CHARM_STATES = [["Kingsoul state","royalCharmState"],["Void Heart","gotShadeCharm"],["Grimmchild level","grimmChildLevel"],
+  ["Unbreakable Heart","fragileHealth_unbreakable"],["Unbreakable Greed","fragileGreed_unbreakable"],["Unbreakable Strength","fragileStrength_unbreakable"],
+  ["Fragile Heart broken","brokenCharm_23"],["Fragile Greed broken","brokenCharm_24"],["Fragile Strength broken","brokenCharm_25"]];
+
+/* ---------- State ---------- */
+let save = null, pd = null, format = "dat", fileName = "user1.dat", dirty = false, current = "overview";
+let pendingFocus = null, pendingFilter = null;
+const $ = s => document.querySelector(s);
+function h(tag, attrs={}, ...kids){
+  const e = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs)){
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(k));
+  return e;
+}
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove("show"),2800); }
+function markDirty(){ dirty = true; $("#dirty").hidden = false; }
+function set(key, val){ pd[key] = val; markDirty(); }
+const pretty = s => s.replace(/([a-z])([A-Z0-9])/g,"$1 $2").replace(/_/g," ");
+
+/* ---------- In-game names and descriptions ---------- */
+// Journal IDs (the part after "killed") mapped to in-game names. IDs not listed fall back to a readable version of the ID.
+const JNAME = {
+  Crawler:"Crawlid", Buzzer:"Vengefly", Bouncer:"Gruzzer", Climber:"Tiktik", Hopper:"Hopper", Worm:"Goam",
+  Spitter:"Aspid Hunter", Hatcher:"Aspid Mother", Hatchling:"Aspid Hatchling",
+  ZombieRunner:"Wandering Husk", ZombieHornhead:"Husk Hornhead", ZombieLeaper:"Leaping Husk", ZombieBarger:"Husk Bully",
+  ZombieShield:"Husk Warrior", ZombieGuard:"Husk Guard", ZombieMiner:"Husk Miner",
+  BigBuzzer:"Vengefly King", BigFly:"Gruz Mother", Mawlek:"Brooding Mawlek", LesserMawlek:"Lesser Mawlek", MawlekTurret:"Mawlurk",
+  FalseKnight:"False Knight", Roller:"Baldur", Blocker:"Elder Baldur", PrayerSlug:"Maggot", MenderBug:"Menderbug",
+  MossmanRunner:"Mosskin", MossmanShaker:"Volatile Mosskin", Mosquito:"Squit", BlobFlyer:"Obble",
+  FungifiedZombie:"Fungified Husk", PlantShooter:"Gulka", MossCharger:"Moss Charger", MegaMossCharger:"Massive Moss Charger",
+  SnapperTrap:"Fool Eater", MossKnight:"Moss Knight", MossKnightFat:"Mossy Vagabond", GrassHopper:"Loodle",
+  AcidFlyer:"Duranda", AcidWalker:"Durandoo", MossFlyer:"Mossfly", MossWalker:"Mosscreep",
+  InfectedKnight:"Broken Vessel", LazyFlyer:"Aluba", ZapBug:"Charged Lumafly",
+  Jellyfish:"Ooma", JellyCrawler:"Uoma", MegaJellyfish:"Uumuu",
+  FungoonBaby:"Fungling", MushroomTurret:"Sporg", FungusFlyer:"Fungoon", FungCrawler:"Ambloom",
+  MushroomRoller:"Shrumal Warrior", MushroomBrawler:"Shrumal Ogre", MushroomBaby:"Shrumeling",
+  MantisFlyerChild:"Mantis Youth", Mantis:"Mantis Warrior", MantisHeavyFlyer:"Mantis Petra", MantisHeavy:"Mantis Traitor",
+  MantisLord:"Mantis Lords", TraitorLord:"Traitor Lord", GardenZombie:"Spiny Husk",
+  RuinsSentry:"Husk Sentry", RuinsSentryFat:"Heavy Sentry", RuinsFlyingSentry:"Winged Sentry", GreatShieldZombie:"Great Husk Sentry",
+  Mage:"Soul Twister", MageKnight:"Soul Warrior", ElectricMage:"Volt Twister", MageBlob:"Mistake", MageBalloon:"Folly", MageLord:"Soul Master",
+  BlackKnight:"Watcher Knight", JarCollector:"The Collector",
+  RoyalDandy:"Husk Dandy", RoyalCoward:"Cowardly Husk", RoyalPlumper:"Gluttonous Husk", GorgeousHusk:"Gorgeous Husk",
+  CeilingDropper:"Belfly", MegaBeamMiner:"Crystal Guardian", CrystalCrawler:"Glimback",
+  MimicSpider:"Nosk", BigCentipede:"Garpede", AbyssCrawler:"Shadow Creeper", SlashSpider:"Stalking Devout",
+  BeeHatchling:"Hiveling", BeeStinger:"Hive Soldier", BigBee:"Hive Guardian", HiveKnight:"Hive Knight",
+  FlukeMother:"Flukemarm", DungDefender:"Dung Defender", WhiteDefender:"White Defender",
+  Hornet:"Hornet", Oblobble:"Oblobble", LobsterLancer:"God Tamer", GreyPrince:"Grey Prince Zote",
+  NailBros:"Brothers Oro & Mato", PaleLurker:"Pale Lurker",
+  GhostAladar:"Gorb", GhostXero:"Xero", GhostHu:"Elder Hu", GhostMarmu:"Marmu", GhostNoEyes:"No Eyes",
+  GhostMarkoth:"Markoth", GhostGalien:"Galien",
+  FlameBearerSmall:"Grimmkin Novice", FlameBearerMed:"Grimmkin Master", FlameBearerLarge:"Grimmkin Nightmare",
+  Grimm:"Troupe Master Grimm", NightmareGrimm:"Nightmare King Grimm",
+  FinalBoss:"Hollow Knight", HollowKnightPrime:"Pure Vessel"
+};
+const jname = id => JNAME[id] || pretty(id);
+
+// Scene-name prefixes mapped to areas. Longer prefixes come first so they win.
+const AREAS = [
+  ["Tutorial_01","King's Pass"],["Town","Dirtmouth"],["Crossroads_ShamanTemple","Ancestral Mound (Forgotten Crossroads)"],
+  ["Crossroads_","Forgotten Crossroads"],["Fungus1_","Greenpath"],["Fungus2_","Fungal Wastes"],
+  ["Fungus3_archive","Teacher's Archives (Fog Canyon)"],["Fungus3_","Fog Canyon or Queen's Gardens"],
+  ["Ruins_Bathhouse","Pleasure House (City of Tears)"],["Ruins2_11","Tower of Love (City of Tears)"],["Ruins","City of Tears"],
+  ["Waterways_","Royal Waterways"],["Abyss_","Ancient Basin or the Abyss"],["Deepnest_East_","Kingdom's Edge"],
+  ["Deepnest_Spider_Town","Beast's Den (Deepnest)"],["Deepnest_","Deepnest"],["Mines_","Crystal Peak"],
+  ["RestingGrounds_","Resting Grounds"],["Hive_","The Hive"],["Cliffs_","Howling Cliffs"],["White_Palace_","White Palace"],
+  ["Room_Colosseum","Colosseum of Fools"],["Room_","an interior room (a shop, house or station)"],
+  ["Grimm_","the Grimm Troupe tent"],["GG_","Godhome"],["Dream_","a dream area"]
+];
+const areaOf = scene => (AREAS.find(([p])=>scene.startsWith(p)) || [,"an unlisted area"])[1];
+
+// Object kinds recognised from the object's name in the save.
+const KINDS = [
+  [/quake/i,"floor you break with a dive spell","Turn it off to rebuild the floor."],
+  [/collapse|break.?floor|breakable.?floor/i,"breakable floor","Turn it off to rebuild the floor."],
+  [/one.?way/i,"one-way wall","Turn it off to close it again."],
+  [/break|wall/i,"breakable wall","Turn it off to rebuild the wall."],
+  [/lever|switch/i,"lever","Turn it off to un-pull it, which closes whatever it opened."],
+  [/toll/i,"toll machine","Turn it off to make it ask for geo again."],
+  [/gate|door/i,"gate or door","Turn it off to close it again."],
+  [/heart.?piece/i,"mask shard pickup","Turn it off to make the shard collectable again."],
+  [/vessel/i,"vessel fragment pickup","Turn it off to make the fragment collectable again."],
+  [/chest/i,"chest","Turn it off to make the chest closed and full again."],
+  [/shiny|item|pickup|collect/i,"item pickup","Turn it off to make the item appear again."],
+  [/grub|bottle|jar/i,"grub jar","Turn it off to put the grub back."],
+  [/mask|secret|remask/i,"cover over a hidden area","Turn it off to hide the area again."],
+  [/battle|arena|ambush/i,"ambush or arena fight","Turn it off to make the fight happen again."],
+  [/elevator|lift|platform/i,"elevator or moving platform",""],
+];
+// What each area is, used in world-object descriptions.
+const AREA_ABOUT = {
+  "King's Pass":"the opening path you walk at the very start of the game, leading into Dirtmouth",
+  "Dirtmouth":"the quiet surface town above Hallownest, home to Elderbug, Sly, Iselda and the well down into the kingdom",
+  "Ancestral Mound (Forgotten Crossroads)":"the snail shamans' mound in the Crossroads, where Vengeful Spirit is found",
+  "Forgotten Crossroads":"the old main roads just below Dirtmouth and the first underground area you explore",
+  "Greenpath":"the overgrown, moss-covered area west of the Crossroads, where you first fight Hornet",
+  "Fungal Wastes":"the mushroom caverns full of acid pools that connect to the Mantis Village and the City of Tears",
+  "Teacher's Archives (Fog Canyon)":"Monomon's flooded archive inside Fog Canyon",
+  "Fog Canyon or Queen's Gardens":"Fog Canyon (the misty jellyfish caverns) or Queen's Gardens (the overgrown royal gardens). Both use the same room prefix",
+  "Pleasure House (City of Tears)":"the bathhouse in the City of Tears",
+  "Tower of Love (City of Tears)":"the Collector's tower in the City of Tears, opened with the Love Key",
+  "City of Tears":"Hallownest's rain-soaked capital",
+  "Royal Waterways":"the sewers running beneath the City of Tears",
+  "Ancient Basin or the Abyss":"the deep caverns below the city leading down to the Abyss",
+  "Kingdom's Edge":"the ash-covered far east of the kingdom, home to the Hive and the Colosseum",
+  "Beast's Den (Deepnest)":"Herrah's lair, deep inside Deepnest",
+  "Deepnest":"the pitch-dark tunnels full of spiders and weavers",
+  "Crystal Peak":"the crystal mines high in the mountain",
+  "Resting Grounds":"the burial grounds where the Seer gives you the Dream Nail",
+  "The Hive":"the bee hive inside Kingdom's Edge",
+  "Howling Cliffs":"the windy cliffs west of Dirtmouth",
+  "White Palace":"the Pale King's palace, reached through a dream",
+  "Colosseum of Fools":"the arena of trials in Kingdom's Edge",
+  "an interior room (a shop, house or station)":"",
+  "the Grimm Troupe tent":"the troupe's tent that appears in Dirtmouth",
+  "Godhome":"the Godseekers' realm from the Godmaster update",
+  "a dream area":"a place you reach with the Dream Nail"
+};
+
+// What each kind of object is, in game terms.
+const KIND_ABOUT = {
+  "floor you break with a dive spell":"A cracked floor that only breaks when you slam into it with Desolate Dive or Descending Dark. Breaking it opens a drop into the room below.",
+  "breakable floor":"A weak floor that crumbles when you hit it or stand on it, opening a drop into the room below.",
+  "one-way wall":"A wall that can only be broken from one side. These usually open shortcuts back to earlier parts of an area.",
+  "breakable wall":"A wall you smash with your nail. Most hide a shortcut, a secret room or a collectible behind them.",
+  "lever":"A switch you strike with your nail. Pulling it opens a gate, raises a platform, unlocks a shortcut or lowers a lift.",
+  "toll machine":"A coin machine that unlocks something, such as a gate, a bench or a lift, once you pay geo into it.",
+  "gate or door":"A gate or door that stays open once something triggers it, such as a lever, a key or beating a fight.",
+  "mask shard pickup":"A mask shard lying in the world. Four shards make a new mask.",
+  "vessel fragment pickup":"A vessel fragment lying in the world. Three fragments make a new soul vessel.",
+  "chest":"A chest you break open for geo or an item.",
+  "item pickup":"A glowing item on the ground, such as a charm, a relic, a key or a map piece.",
+  "grub jar":"A glass jar with a trapped grub inside. Breaking it frees the grub, who then goes home to the Grubfather.",
+  "cover over a hidden area":"A dark overlay that hides a secret room until you walk into it. The save remembers it's been revealed.",
+  "ambush or arena fight":"A fight where enemies appear and the exits lock until you beat them.",
+  "elevator or moving platform":"A lift or platform whose position the world remembers.",
+  "object the world remembers":"An object whose state the game saves so it stays the same next time you visit."
+};
+
+function describeObject(r, listKey){
+  const area = areaOf(r.sceneName), aboutArea = AREA_ABOUT[area];
+  const where = `Location: ${area}${aboutArea ? `, ${aboutArea}` : ""}. Room ID ${r.sceneName}; object name "${r.id}".`;
+  if (listKey === "geoRocks"){
+    return {paras:[
+      "Geo rock: a rock with geo embedded in it. Each nail strike knocks some geo loose until the rock is empty and breaks.",
+      where,
+      `Hits left: ${r.hitsLeft}. At 0 the rock is broken. Raise the number to refill it so it gives geo again next visit.`]};
+  }
+  const k = KINDS.find(([re])=>re.test(r.id));
+  const kind = k ? k[1] : "object the world remembers";
+  const paras = [`${kind[0].toUpperCase()+kind.slice(1)}: ${KIND_ABOUT[kind]}`, where];
+  if (listKey === "persistentIntItems")
+    paras.push(`Current value: ${r.value}. This number tracks progress on the object, such as hits taken or a stage reached. Set it back to the starting value to reset it.`);
+  else
+    paras.push(`Currently ${r.activated ? "on (already broken, pulled, opened or collected)" : "off (untouched)"}. ${k?.[2] || "Turn it off to reset it."}`);
+  if (r.semiPersistent) paras.push("This one is semi-persistent: it resets on its own whenever you rest at a bench.");
+  return {paras};
+}
+
+// Cornifer's maps and area names used inside field names.
+const MAPNAMES = {Dirtmouth:"Dirtmouth",Town:"Dirtmouth",Crossroads:"Forgotten Crossroads",Greenpath:"Greenpath",FogCanyon:"Fog Canyon",
+  RoyalGardens:"Queen's Gardens",FungalWastes:"Fungal Wastes",Fungus:"Fungal Wastes",City:"City of Tears",Ruins:"City of Tears",
+  Waterways:"Royal Waterways",Mines:"Crystal Peak",DeepNest:"Deepnest",Deepnest:"Deepnest",Cliffs:"Howling Cliffs",
+  Outskirts:"Kingdom's Edge",RestingGrounds:"Resting Grounds",AbyssBasin:"Ancient Basin",Abyss:"the Abyss",Hive:"the Hive",
+  WhitePalace:"the White Palace",Godhome:"Godhome"};
+const STAGS = {Town:"Dirtmouth",Crossroads:"Forgotten Crossroads",Greenpath:"Greenpath",Ruins1:"City Storerooms",Ruins2:"King's Station",
+  FungalWastes:"Queen's Station",RoyalGardens:"Queen's Gardens",RestingGrounds:"Resting Grounds",Deepnest:"Distant Village",
+  StagNest:"Stag Nest",HiddenStation:"the Hidden Station"};
+const PINS = {Bench:"benches",Cocoon:"lifeblood cocoons",DreamPlant:"Whispering Roots",Shop:"vendors",Spa:"hot springs",
+  Stag:"stag stations",Tram:"tram stations",Ghost:"Warrior's Graves",Grub:"grubs"};
+const MARKERS = {r:"red",b:"blue",y:"yellow",w:"white"};
+
+// Characters who appear in field names: [in-game name, who they are].
+const NPCS = {
+  Elderbug:["Elderbug","the elderly bug who stays in Dirtmouth and greets you on arrival"],
+  Sly:["Sly","the shopkeeper in Dirtmouth, later a Nailmaster"],
+  Iselda:["Iselda","Cornifer's wife, who runs the map shop in Dirtmouth"],
+  Cornifer:["Cornifer","the cartographer who sells area maps, found humming in each area"],
+  Quirrel:["Quirrel","the wandering traveller you meet across Hallownest"],
+  Bretta:["Bretta","the bug you rescue from Fungal Wastes, who then lives in Dirtmouth"],
+  Zote:["Zote","the boastful 'knight' you rescue several times"],
+  Myla:["Myla","the singing miner in the Crossroads, near Crystal Peak"],
+  Tuk:["Tuk","the egg seller in the Royal Waterways"],
+  Jiji:["Confessor Jiji","the bug in Dirtmouth who calls your shade for a rancid egg"],
+  Hornet:["Hornet","the protector of Hallownest whom you fight twice"],
+  Emilitia:["Emilitia","the snobbish noble in the City of Tears"],
+  Cloth:["Cloth","the warrior you help in Queen's Gardens"],
+  Tiso:["Tiso","the warrior bound for the Colosseum"],
+  Marissa:["Marissa","the singer in the Pleasure House"],
+  Midwife:["the Midwife","the giant spider in Deepnest"],
+  Willoh:["Willoh","the mushroom-loving bug in Fungal Wastes"],
+  Bardoon:["Bardoon","the giant caterpillar in Kingdom's Edge"],
+  Banker:["Millibelle","the banker in Fog Canyon"],
+  Millibelle:["Millibelle","the banker in Fog Canyon"],
+  RelicDealer:["Lemm","the relic seeker in the City of Tears who buys relics"],
+  CharmSlug:["Salubra","the charm seller in the Forgotten Crossroads"],
+  Salubra:["Salubra","the charm seller in the Forgotten Crossroads"],
+  Legeater:["the Leg Eater","the charm seller in Fungal Wastes who repairs fragile charms"],
+  LegEater:["the Leg Eater","the charm seller in Fungal Wastes who repairs fragile charms"],
+  Nailsmith:["the Nailsmith","the smith in the City of Tears who upgrades your nail"],
+  Grimm:["Grimm","master of the Grimm Troupe"],
+  Brumm:["Brumm","the Grimm Troupe's accordion player"],
+  Divine:["Divine","the Grimm Troupe member who sells unbreakable fragile charms"],
+  Nymm:["Nymm","Brumm after the troupe is banished, playing in Dirtmouth"],
+  Grubfather:["the Grubfather","the grub who rewards you for freeing his grublings"],
+  Oro:["Nailmaster Oro","the Nailmaster in Kingdom's Edge"],
+  Mato:["Nailmaster Mato","the Nailmaster in Howling Cliffs who teaches Cyclone Slash"],
+  Sheo:["Nailmaster Sheo","the painter Nailmaster in Greenpath"],
+  Hunter:["the Hunter","who gives you the Hunter's Journal in Greenpath"],
+  Godseeker:["the Godseeker","who leads you into Godhome"],
+  Lurien:["Lurien","the Watcher, one of the three Dreamers"],
+  Monomon:["Monomon","the Teacher, one of the three Dreamers"],
+  Herrah:["Herrah","the Beast, one of the three Dreamers"],
+  Stag:["the Last Stag","who carries you between stag stations"]
+};
+const BOSSES = {falseKnightDream:"Failed Champion",infectedKnightDream:"Lost Kin",mageLordDream:"Soul Tyrant",
+  whiteDefender:"White Defender",greyPrince:"Grey Prince Zote",hornet1:"Hornet (Greenpath)",hornetOutskirts:"Hornet (Kingdom's Edge)",
+  MegaBeamMiner:"Crystal Guardian",MegaBeamMiner2:"Enraged Guardian",MantisLords:"the Mantis Lords",DungDefender:"Dung Defender",
+  MageLord:"Soul Master",FalseKnight:"False Knight"};
+
+const MORE = {
+  healthBlue:"Lifeblood masks you have right now: the blue masks from Lifeblood charms, lifeblood cocoons and Joni's Blessing. They take hits before your normal masks, and focusing can't refill them.",
+  MPCharge:"Soul in your main vessel right now, 0–99. Striking enemies fills it; focusing to heal and casting spells (33 each) spend it.",
+  MPReserve:"Soul stored in your extra vessels right now. It flows into the main vessel as you spend soul.",
+  maxMP:"Size of the main soul vessel. Normally 99. It drops while your shade is out (the cracked vessel) and returns when you defeat the shade.",
+  soulLimited:"On while your shade is still out in the world. It cracks your soul vessel and caps your soul until you defeat the shade.",
+  shadeScene:"The room where your shade is waiting after your last death. Defeating it there returns its geo and fixes your soul vessel.",
+  shadePositionX:"Horizontal position of your shade inside its room.",
+  shadePositionY:"Vertical position of your shade inside its room.",
+  shadeHealth:"How many hits your shade can take before it's defeated.",
+  geoPool:"Geo your shade is holding. You get it back by defeating the shade.",
+  dreamGateScene:"The room where your Dreamgate is placed. Using Dreamgate warps you here.",
+  dreamGateX:"Horizontal position of your Dreamgate in its room.",
+  dreamGateY:"Vertical position of your Dreamgate in its room.",
+  charmSlotsFilled:"Notches currently taken up by equipped charms. The Charms section recalculates this for you.",
+  charmsOwned:"How many charms you own. Salubra only sells her notches once you own enough charms.",
+  overcharmed:"On while your equipped charms cost more notches than you have. While overcharmed you take double damage.",
+  grubRewards:"How many of the Grubfather's rewards you've already collected.",
+  stationsOpened:"How many stag stations you've opened.",
+  salubraBlessing:"Whether you bought Salubra's Blessing, which slowly refills soul while you rest on a bench.",
+  hasJournal:"Whether you have the Hunter's Journal, given by the Hunter in Greenpath.",
+  hasHuntersMark:"Whether you have the Hunter's Mark, the Hunter's reward for completing the journal.",
+  journalEntriesCompleted:"How many journal entries are fully completed.",
+  journalNotesCompleted:"How many journal entries have their Hunter's notes unlocked.",
+  journalEntriesTotal:"Total journal entries the game counts toward completion.",
+  version:"The game version that last wrote this save. Changing it doesn't change the game.",
+  profileID:"Which save slot this is, 1–4.",
+  dreamOrbsSpent:"Essence you've already spent.",
+  respawnType:"How you appear at the respawn point, such as sitting on a bench."
+};
+
+const STOP = new Set(["has","got","killed","kills","new","data","met","opened","visited","can","is","the","of","defeated","level","map","pin","marker","seen","given","collected","completed","spoke","talked","convo","first","times","state","number","count"]);
+const tokens = k => k.replace(/_/g," ").replace(/([a-z])([A-Z0-9])/g,"$1 $2").split(/\s+/).filter(Boolean);
+function relatedKeys(k){
+  if (!pd) return [];
+  const subj = tokens(k).filter(t=>!STOP.has(t.toLowerCase()) && t.length>=4 && !/^\d+$/.test(t)).sort((a,b)=>b.length-a.length)[0];
+  if (!subj) return [];
+  const re = new RegExp(subj, "i");
+  return Object.keys(pd).filter(x=>x!==k && re.test(x)).slice(0,6);
+}
+function npcIn(k){ for (const t in NPCS) if (new RegExp(t,"i").test(k)) return NPCS[t]; return null; }
+function showVal(v){ const s = JSON.stringify(v); return s.length > 80 ? s.slice(0,77)+"…" : s; }
+
+// Full description for any playerData key.
+function describeKey(k){
+  const v = pd ? pd[k] : undefined, t = typeof v;
+  const charm = n => CHARMS[n-1] ? `${CHARMS[n-1][0]} (charm ${n}): ${CHARMS[n-1][1].replace(/\.$/,"")}.` : `charm ${n}.`;
+  let m, lead = null, ctx = null, guessed = true;
+  if (DESC[k]) { lead = DESC[k]; guessed = false; }
+  else if (MORE[k]) { lead = MORE[k]; guessed = false; }
+  else if ((m = k.match(/^gotCharm_(\d+)$/))) { lead = `Whether you own ${charm(+m[1])}`; guessed = false; }
+  else if ((m = k.match(/^equippedCharm_(\d+)$/))) { lead = `Whether this charm is equipped: ${charm(+m[1])} The Charms section keeps the equipped list and notch count in step when you change it there.`; guessed = false; }
+  else if ((m = k.match(/^charmCost_(\d+)$/))) { lead = `How many notches it costs to equip ${charm(+m[1])}`; guessed = false; }
+  else if ((m = k.match(/^newCharm_(\d+)$/))) { lead = `Shows the "new" marker in the inventory for ${charm(+m[1])}`; }
+  else if ((m = k.match(/^killed([A-Z].*)$/)) && t==="boolean") { lead = `Hunter's Journal: whether you've killed ${jname(m[1])} at least once. Turning it on adds the creature to the journal.`; guessed = !JNAME[m[1]]; }
+  else if ((m = k.match(/^kills([A-Z].*)$/)) && t==="number") { lead = `Hunter's Journal: how many more ${jname(m[1])} you need to kill to complete its entry and unlock the Hunter's notes. It counts down; 0 means complete.`; guessed = !JNAME[m[1]]; }
+  else if ((m = k.match(/^newData([A-Z].*)$/))) { lead = `Hunter's Journal display flag for ${jname(m[1])}'s entry, marking it as newly recorded.`; }
+  else if (k === "equippedCharms") { lead = "The list of equipped charm numbers (1–40) the game reads when it loads. The Charms section keeps it matched to the equipped flags."; guessed = false; }
+  else if (k === "mapZone") { lead = "The map region you were in when the game saved. The map screen opens on this region."; }
+  else if ((m = k.match(/^map([A-Z].*)$/)) && t==="boolean") { lead = `Whether you own Cornifer's map of ${MAPNAMES[m[1]] || pretty(m[1])}. Without it, that area stays blank on your map even after you explore it.`; guessed = !MAPNAMES[m[1]]; }
+  else if ((m = k.match(/^hasPin(.+)$/))) { lead = `Whether you've bought Iselda's map pin for ${PINS[m[1]] || pretty(m[1]).toLowerCase()}. Pins mark those spots on your map.`; guessed = !PINS[m[1]]; }
+  else if ((m = k.match(/^hasMarker_?(\w)?$/))) { lead = `Whether you've bought Iselda's ${MARKERS[m[1]] || ""} markers, which you can place on the map yourself.`.replace("  "," "); }
+  else if ((m = k.match(/^opened(.+)$/)) && STAGS[m[1]]) { lead = `Whether the stag station at ${STAGS[m[1]]} is open. Open stations can be travelled to with the Last Stag.`; guessed = false; }
+  else if ((m = k.match(/^scenes(.+)$/)) && t==="object") { lead = `The list of rooms (scenes) you've ${pretty(m[1]).toLowerCase()}. The map uses it to decide which rooms to draw.`; }
+  else if ((m = k.match(/^visited(.+)$/))) { const a = MAPNAMES[m[1]]; lead = `Whether you've entered ${a || pretty(m[1])}. The game uses it for first-visit area title cards and some story checks.`; guessed = !a; }
+  else if ((m = k.match(/^opened(.+)$/))) { lead = `Whether ${pretty(m[1])} has been opened. These are usually gates, doors, tolls or shortcuts.`; }
+  else if ((m = k.match(/^(.+?)Defeated$/)) || (m = k.match(/^defeated(.+)$/))) { const b = BOSSES[m[1]]; lead = `Whether you've defeated ${b || pretty(m[1])}. Turning it on marks the fight as won, and it won't start again.`; guessed = !b; }
+  else if ((m = k.match(/^met(.+)$/))) { const n = npcIn(m[1]); lead = `Whether you've met ${n ? n[0] : pretty(m[1])}${n ? `, ${n[1]}` : ""}. Turning it off can replay their first meeting.`; guessed = !n; }
+  else if ((m = k.match(/^has(.+)$/)) && t==="boolean") lead = `Whether you have ${pretty(m[1])}.`;
+  else if ((m = k.match(/^can(.+)$/)) && t==="boolean") lead = `Whether ${pretty(m[1])} is usable right now. It's usually paired with a matching has… flag, and both need to be on.`;
+  else if ((m = k.match(/^got(.+)$/)) && t==="boolean") lead = `Whether you've received ${pretty(m[1])}.`;
+  else if ((m = k.match(/^sold(.+)$/))) lead = `How much of ${pretty(m[1])} you've sold.`;
+  else if ((m = k.match(/^(.+)Level$/)) && t==="number") lead = `Progress stage for ${pretty(m[1])}. Higher numbers mean further along.`;
+  else if (/convo|talk|dialogue|spoke|greet/i.test(k)) lead = `Dialogue progress (${pretty(k)}): tracks which lines a character has already said, so they don't repeat themselves.`;
+  else if (/grimm|troupe|flame|brumm|nymm/i.test(k)) lead = `Part of the Grimm Troupe questline (${pretty(k)}). The troupe arrives in Dirtmouth once you light the Nightmare Lantern in Howling Cliffs.`;
+  else if (/zote/i.test(k)) lead = `Part of Zote's storyline (${pretty(k)}). Zote is the boastful 'knight' you rescue several times, who later turns up in Dirtmouth and the Colosseum.`;
+  else if (/^gg|godseeker|pantheon|bossDoor|statue/i.test(k)) lead = `Godhome progress (${pretty(k)}). Godhome, from the Godmaster update, holds the Hall of Gods and the Pantheons.`;
+  else if (/stag/i.test(k)) lead = `Stagways progress (${pretty(k)}). The Last Stag carries you between open stations.`;
+  else if (/bench/i.test(k)) lead = `Bench setting (${pretty(k)}). Benches are where you save, swap charms and respawn.`;
+  else if (/collected/i.test(k)) lead = t==="number" ? `How many ${pretty(k.replace(/collected/i,""))} you've collected.` : `Whether ${pretty(k.replace(/collected/i,""))} has been collected.`;
+  else lead = `${pretty(k)}: ${t==="boolean" ? "an on/off story or progress flag" : t==="number" ? "a number the game tracks" : t==="string" ? "a text value, usually a room or object name" : "a list or group of values"}.`;
+
+  if (!ctx && !/^met/.test(k)){ const n = npcIn(k); if (n && !lead.includes(n[0])) ctx = `Related character: ${n[0]}, ${n[1]}.`; }
+  const how = t==="boolean" && !guessed ? "Tick the box to turn it on, untick to turn it off."
+    : t==="boolean" ? "On means it has happened or is unlocked. Turning it off makes the game treat it as not done yet. Story flags often depend on each other, so change related ones together."
+    : t==="number" ? "Type a new number to change it."
+    : t==="string" ? "If it names a room or object, it must match the game's name exactly."
+    : "Edit it as JSON in the box.";
+  const paras = [lead];
+  if (ctx) paras.push(ctx);
+  paras.push(`Current value: ${showVal(v)}. ${how}`);
+  const rel = relatedKeys(k);
+  if (rel.length) paras.push(`Related fields: ${rel.join(", ")}.`);
+  return {paras, guessed};
+}
+
+/* ---------- Info popover ---------- */
+const tipEl = document.createElement("div"); tipEl.className = "tip"; tipEl.setAttribute("role","tooltip"); tipEl.hidden = true;
+document.body.append(tipEl);
+let tipFor = null;
+function hideTip(){ tipEl.hidden = true; tipFor?.setAttribute("aria-expanded","false"); tipFor = null; }
+function infoBtn(info, label){
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "ibtn"; b.textContent = "i";
+  b.setAttribute("aria-label", `About ${label}`); b.setAttribute("aria-expanded","false");
+  b.onclick = e => {
+    e.stopPropagation();
+    if (tipFor === b){ hideTip(); return; }
+    hideTip();
+    const d = typeof info === "function" ? info() : info;
+    tipEl.replaceChildren(...(d.paras || [d.text]).map(t=>{ const p = document.createElement("p"); p.textContent = t; return p; }));
+    if (d.guessed){ const n = document.createElement("span"); n.className = "guess"; n.textContent = "Parts of this are worked out from the field's name, so treat them as a best guess."; tipEl.append(n); }
+    tipEl.hidden = false; tipFor = b; b.setAttribute("aria-expanded","true");
+    const r = b.getBoundingClientRect(), w = tipEl.offsetWidth, ht = tipEl.offsetHeight;
+    let left = Math.min(Math.max(8, r.left + r.width/2 - w/2), innerWidth - w - 8);
+    let top = r.bottom + 8; if (top + ht > innerHeight - 8) top = Math.max(8, r.top - ht - 8);
+    tipEl.style.left = left + "px"; tipEl.style.top = top + "px";
+  };
+  return b;
+}
+document.addEventListener("click", e => { if (tipFor && !tipEl.contains(e.target)) hideTip(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && tipFor){ const b = tipFor; hideTip(); b.focus(); } });
+addEventListener("scroll", () => { if (tipFor) hideTip(); }, true);
+addEventListener("resize", () => { if (tipFor) hideTip(); });
+
+/* ---------- Respawn point ---------- */
+// Bench rooms, grouped by area: [room ID, bench name].
+const BENCHES = [
+  ["Dirtmouth",[["Town","Dirtmouth"]]],
+  ["Howling Cliffs",[["Room_nailmaster","Nailmaster Mato's hut"]]],
+  ["Forgotten Crossroads",[["Crossroads_47","Crossroads stag station"],["Crossroads_04","Salubra's shop"],["Crossroads_30","Crossroads hot spring"],["Crossroads_ShamanTemple","Ancestral Mound"],["Room_Final_Boss_Atrium","Black Egg Temple"]]],
+  ["Greenpath",[["Fungus1_01b","Greenpath waterfall"],["Fungus1_31","Greenpath toll bench"],["Fungus1_16_alt","Greenpath stag station"],["Fungus1_37","Stone Sanctuary"],["Room_Slug_Shrine","Lake of Unn"],["Fungus1_15","Nailmaster Sheo's hut"]]],
+  ["Fog Canyon",[["Fungus3_archive","Teacher's Archives"]]],
+  ["Fungal Wastes",[["Fungus2_02","Queen's Station"],["Fungus2_26","Leg Eater"],["Fungus2_31","Mantis Village"]]],
+  ["Queen's Gardens",[["Fungus3_40","Queen's Gardens stag station"],["Fungus3_50","Queen's Gardens toll bench"]]],
+  ["City of Tears",[["Ruins1_02","City entrance (Quirrel's bench)"],["Ruins1_31","City toll bench"],["Ruins1_29","City Storerooms"],["Ruins2_08","King's Station"],["Ruins_Bathhouse","Pleasure House"]]],
+  ["Royal Waterways",[["Waterways_02","Royal Waterways"]]],
+  ["Deepnest",[["Deepnest_30","Deepnest hot spring"],["Deepnest_14","Failed Tramway"],["Deepnest_Spider_Town","Beast's Den"]]],
+  ["Ancient Basin",[["Abyss_18","Basin toll bench"],["Abyss_22","Hidden Station"]]],
+  ["Kingdom's Edge",[["Deepnest_East_06","Nailmaster Oro's hut"],["Deepnest_East_13","Kingdom's Edge camp"],["Room_Colosseum_02","Colosseum of Fools"],["Hive_01","The Hive"]]],
+  ["Crystal Peak",[["Mines_29","Crystal Peak dark room"],["Mines_18","Crystal Guardian"]]],
+  ["Resting Grounds",[["RestingGrounds_09","Resting Grounds stag station"],["RestingGrounds_12","Grey Mourner's house"]]],
+  ["White Palace",[["White_Palace_01","White Palace entrance"],["White_Palace_03_hub","White Palace atrium"],["White_Palace_06","White Palace balcony"]]]
+];
+const BENCH_IDS = new Set(BENCHES.flatMap(([,b])=>b.map(([id])=>id)));
+const MARKERS_KNOWN = [["RestBench","RestBench (bench)"]];
+
+// Every room name this save mentions: visited/mapped lists, world objects, shade, Dreamgate.
+function roomsInSave(){
+  const set = new Set();
+  for (const [k,v] of Object.entries(pd)) if (Array.isArray(v) && /^scenes/.test(k)) v.forEach(x=>typeof x==="string" && set.add(x));
+  for (const list of Object.values(save.sceneData||{})) if (Array.isArray(list)) list.forEach(r=>r?.sceneName && set.add(r.sceneName));
+  ["shadeScene","dreamGateScene","respawnScene"].forEach(k=>typeof pd[k]==="string" && pd[k] && set.add(pd[k]));
+  return [...set].filter(x=>!BENCH_IDS.has(x)).sort((a,b)=>a.localeCompare(b));
+}
+function respawnField(which){
+  const key = which==="scene" ? "respawnScene" : "respawnMarkerName";
+  const label = which==="scene" ? "Respawn point" : "Respawn marker";
+  const lbl = h("span",{class:"lbl"}, h("span",{},label), h("code",{},key));
+  if (!(key in pd)) return h("div",{class:"field missing","data-key":key}, h("div",{class:"head"},lbl,h("span",{class:"note"},"not in this save")));
+  const sel = h("select",{"aria-label":label,class:"wide-select"});
+  const custom = h("input",{type:"text","aria-label":`${label}, custom value`,placeholder:"Type an exact name",class:"custom-in"});
+  const cur = pd[key];
+  if (which==="scene"){
+    BENCHES.forEach(([area,list])=>sel.append(h("optgroup",{label:`Benches: ${area}`}, list.map(([id,name])=>h("option",{value:id},`${name} (${id})`)))));
+    const rooms = roomsInSave();
+    if (rooms.length) sel.append(h("optgroup",{label:"Other rooms in this save (may have no bench)"}, rooms.map(r=>h("option",{value:r},`${areaOf(r)}: ${r}`))));
+  } else {
+    sel.append(h("optgroup",{label:"Markers"}, MARKERS_KNOWN.map(([v,l])=>h("option",{value:v},l))));
+    if (cur && !MARKERS_KNOWN.some(([v])=>v===cur)) sel.append(h("optgroup",{label:"In this save"}, h("option",{value:cur},cur)));
+  }
+  sel.append(h("option",{value:"__custom"},"Custom name…"));
+  sel.value = cur; if (sel.value !== cur){ sel.value = "__custom"; }
+  custom.value = cur; custom.hidden = sel.value !== "__custom";
+  sel.onchange = () => {
+    if (sel.value === "__custom"){ custom.hidden = false; custom.focus(); return; }
+    custom.hidden = true; set(key, sel.value);
+    if (which==="scene" && BENCH_IDS.has(sel.value) && "respawnMarkerName" in pd && pd.respawnMarkerName !== "RestBench"){
+      pd.respawnMarkerName = "RestBench"; toast("Marker set to RestBench to match the bench."); render();
+    }
+  };
+  custom.onchange = () => { if (custom.value.trim()) set(key, custom.value.trim()); };
+  const help = which==="scene" ? DESC.respawnScene : DESC.respawnMarkerName;
+  return h("div",{class:"field","data-key":key}, h("div",{class:"head"},lbl), sel, custom, h("p",{class:"help"},help));
+}
+
+/* ---------- Backup and save-location guide ---------- */
+const PLATFORMS = [
+  {name:"Windows (Steam, GOG or other stores)", path:"%USERPROFILE%\\AppData\\LocalLow\\Team Cherry\\Hollow Knight\\",
+   steps:["Press Windows + R, paste the path above, and press Enter.","Or open File Explorer and paste the path into the address bar.","AppData is hidden by default, so pasting the path is the easiest way in."]},
+  {name:"Windows (Xbox app / PC Game Pass)", path:"%LOCALAPPDATA%\\Packages\\ (folder starting with TeamCherry.HollowKnight_) \\SystemAppData\\wgs\\",
+   steps:["This version stores saves in cloud-sync containers with random file names, not user1.dat.","The editor can't open these directly. A Steam or GOG copy of your save is the reliable route."], unsupported:true},
+  {name:"macOS", path:"~/Library/Application Support/unity.Team Cherry.Hollow Knight/",
+   steps:["In Finder, choose Go → Go to Folder (Shift + Command + G).","Paste the path above and press Return.","The Library folder is hidden by default, so Go to Folder is the easiest way in."]},
+  {name:"Linux (native)", path:"~/.config/unity3d/Team Cherry/Hollow Knight/",
+   steps:["In your file manager, press Ctrl + L and paste the path.","Or show hidden files (often Ctrl + H) and open .config from your home folder."]},
+  {name:"Steam Deck", path:"/home/deck/.config/unity3d/Team Cherry/Hollow Knight/",
+   steps:["Hold the power button and choose Switch to Desktop.","Open Dolphin (the file manager), open the menu and turn on Show Hidden Files.","Go to Home → .config → unity3d → Team Cherry → Hollow Knight.","Return to Gaming Mode from the desktop shortcut when you're done."]},
+  {name:"Linux or Steam Deck running through Proton", path:"~/.local/share/Steam/steamapps/compatdata/367520/pfx/drive_c/users/steamuser/AppData/LocalLow/Team Cherry/Hollow Knight/",
+   steps:["Only applies if you forced Proton on in the game's Steam properties. 367520 is Hollow Knight's Steam ID.","Show hidden files to see .local."]},
+  {name:"Nintendo Switch", path:"No file access on an unmodified console",
+   steps:["Switch saves can't be copied off the console normally, and Nintendo's cloud saves can't be opened.","A save-manager tool on a modified console can export them, but the file may not match the PC format."], unsupported:true},
+  {name:"PlayStation 4 / 5 and Xbox consoles", path:"No file access",
+   steps:["Console saves are encrypted and locked to the console, so they can't be edited here."], unsupported:true}
+];
+function copyBtn(text){
+  const b = h("button",{class:"btn small",type:"button",onclick:async()=>{ try { await navigator.clipboard.writeText(text); toast("Path copied."); } catch { toast("Couldn't copy. Select the path and copy it by hand."); } }},"Copy path");
+  return b;
+}
+function guideNodes(){
+  return [
+    h("h3",{},"Where your saves are"),
+    h("div",{class:"platforms"}, PLATFORMS.map(pf=>h("details",{class:"platform"+(pf.unsupported?" unsupported":"")},
+      h("summary",{}, pf.name, pf.unsupported ? h("span",{class:"tag"},"Can't edit") : null),
+      h("div",{class:"pathrow"}, h("code",{}, pf.path), pf.unsupported ? null : copyBtn(pf.path)),
+      h("ol",{}, pf.steps.map(t=>h("li",{},t)))))),
+    h("h3",{},"How to make a backup"),
+    h("ol",{class:"backup-steps"},
+      h("li",{},"Close Hollow Knight completely. The game writes to the save when it closes and can overwrite your edit."),
+      h("li",{},"Open your save folder using the steps above."),
+      h("li",{},"Copy the slot you'll edit (for example user1.dat) to somewhere outside that folder. Copying the whole folder is even safer."),
+      h("li",{},"On Steam, turn off Steam Cloud for Hollow Knight while you test (right-click the game → Properties → General). Otherwise Steam may restore the old save over your edit."),
+      h("li",{},"After saving here, put the edited file in the save folder with the same name, replacing the old one."),
+      h("li",{},"To undo everything, copy your backup back into the folder."))
+  ];
+}
+$("#guideHome").append(...guideNodes());
+
+/* ---------- Field widgets ---------- */
+function typedInput(get, put, sample, label){
+  const aria = label ? {"aria-label":label} : {};
+  if (typeof sample === "boolean"){
+    const c = h("input",{type:"checkbox",...aria}); c.checked = get(); c.onchange = () => put(c.checked); return c;
+  }
+  if (typeof sample === "number"){
+    const n = h("input",{type:"number",step:Number.isInteger(sample)?"1":"any",...aria}); n.value = get();
+    n.onchange = () => { const x = Number(n.value); if (Number.isFinite(x)) put(Number.isInteger(sample)?Math.trunc(x):x); else n.value = get(); };
+    return n;
+  }
+  if (typeof sample === "string"){
+    const t = h("input",{type:"text",...aria}); t.value = get(); t.onchange = () => put(t.value); return t;
+  }
+  const ta = h("textarea",{spellcheck:"false",...aria}); ta.value = JSON.stringify(get());
+  ta.onchange = () => { try { put(JSON.parse(ta.value)); ta.style.borderColor=""; } catch { ta.style.borderColor="var(--accent)"; toast("That isn't valid JSON, so it wasn't applied."); } };
+  return ta;
+}
+function field(label, key, opts={}){
+  const has = key in pd, v = pd[key], help = opts.info ? null : DESC[key];
+  const lbl = h("span",{class:"lbl"}, h("span",{class:"lname"}, label, opts.info ? infoBtn(()=>describeKey(key), label) : null), label!==key ? h("code",{},key) : null);
+  const box = (...head) => h("div",{class:"field"+(has?"":" missing"),"data-key":key}, h("div",{class:"head"}, ...head), help ? h("p",{class:"help"},help) : null);
+  if (!has) return box(lbl, h("span",{class:"note"},"not in this save"));
+  let input;
+  if (opts.options){
+    input = h("select",{"aria-label":label}, opts.options.map((o,i)=>h("option",{value:i},o)));
+    input.value = v; input.onchange = () => { set(key, Number(input.value)); opts.after?.(); };
+  } else input = typedInput(()=>pd[key], val=>{ set(key,val); opts.after?.(); }, v, label);
+  if (v !== null && typeof v === "object"){ const b = box(lbl); b.insertBefore(input, b.children[1]||null); return b; }
+  return box(lbl, input);
+}
+function multiField(label, keys){
+  const present = keys.filter(k=>k in pd), help = DESC[keys[0]];
+  const lbl = h("span",{class:"lbl"}, h("span",{},label), h("code",{},keys.join(" + ")));
+  const el = h("div",{class:"field"+(present.length?"":" missing"),"data-key":keys[0]});
+  if (!present.length){ el.append(h("div",{class:"head"},lbl,h("span",{class:"note"},"not in this save")), help?h("p",{class:"help"},help):null); return el; }
+  const c = h("input",{type:"checkbox","aria-label":label}); c.checked = present.every(k=>pd[k]===true);
+  c.onchange = () => { present.forEach(k=>pd[k]=c.checked); markDirty(); };
+  el.append(h("div",{class:"head"},lbl,c), help?h("p",{class:"help"},help):null);
+  return el;
+}
+function infoPanel(id){
+  const i = INFO[id]; if (!i) return null;
+  return h("details",{class:"info",open:true}, h("summary",{},"About this section"),
+    h("p",{},i.about),
+    i.tips?.length ? [h("h4",{},"Tips"), h("ul",{}, i.tips.map(t=>h("li",{},t)))] : null,
+    i.cautions?.length ? [h("h4",{},"Watch out for"), h("ul",{}, i.cautions.map(t=>h("li",{},t)))] : null);
+}
+
+/* ---------- Sections ---------- */
+const SECTIONS = {
+  overview: { title:"Overview", needsSave:true, render(){
+    const nail = field("Nail", "nailSmithUpgrades", {options:NAILS, after(){ if ("nailDamage" in pd){ pd.nailDamage = 5 + 4*pd.nailSmithUpgrades; render(); } }});
+    return [ h("div",{class:"grid"}, nail, field("Nail damage","nailDamage"),
+        field("Steel Soul mode","permadeathMode",{options:["Off (normal)","Steel Soul","Steel Soul (dead)"]}),
+        OVERVIEW.map(([l,k])=>field(l,k)), respawnField("scene"), respawnField("marker")) ];
+  }},
+  abilities: { title:"Abilities", needsSave:true, render(){
+    return [ h("div",{class:"grid"}, ABILITIES.map(([l,ks])=>multiField(l,ks))),
+      h("h3",{},"Spells"), h("div",{class:"grid"}, SPELLS.map(([l,k,o])=>field(l,k,{options:o}))) ];
+  }},
+  charms: { title:"Charms", needsSave:true, render(){
+    const used = () => CHARMS.reduce((s,_,i)=> s + (pd["equippedCharm_"+(i+1)] ? (pd["charmCost_"+(i+1)]||0) : 0), 0);
+    const notch = h("p",{class:"notches"});
+    const paint = () => { const u = used(), max = pd.charmSlots ?? 0;
+      notch.replaceChildren("Notches used: ", h("b",{},String(u)), ` of ${max}`, u>max ? " (overcharmed)" : ""); };
+    paint();
+    const cards = CHARMS.map(([name,desc],i)=>{
+      const n = i+1, card = h("div",{class:"charm"+(pd["equippedCharm_"+n]?" eq":""),"data-key":"gotCharm_"+n});
+      const got = h("input",{type:"checkbox","aria-label":`Own ${name}`}); got.checked = !!pd["gotCharm_"+n];
+      const eq = h("input",{type:"checkbox","aria-label":`Equip ${name}`}); eq.checked = !!pd["equippedCharm_"+n];
+      const cost = h("input",{type:"number",min:0,max:9,"aria-label":`${name} notch cost`}); cost.value = pd["charmCost_"+n] ?? 0;
+      const sync = () => { if ("charmSlotsFilled" in pd) pd.charmSlotsFilled = used(); paint(); };
+      got.onchange = () => { set("gotCharm_"+n, got.checked); if (!got.checked && eq.checked){ eq.checked=false; eq.onchange(); } };
+      eq.onchange = () => {
+        if (eq.checked && !got.checked){ got.checked = true; set("gotCharm_"+n, true); }
+        set("equippedCharm_"+n, eq.checked);
+        if (Array.isArray(pd.equippedCharms)){ pd.equippedCharms = pd.equippedCharms.filter(x=>x!==n); if (eq.checked) pd.equippedCharms.push(n); }
+        card.classList.toggle("eq", eq.checked); sync();
+      };
+      cost.onchange = () => { set("charmCost_"+n, Math.max(0, Math.trunc(Number(cost.value)||0))); sync(); };
+      card.append(h("div",{class:"nm"}, name, h("small",{},"#"+n)), h("p",{class:"cd"},desc),
+        h("label",{class:"row"},"Owned",got), h("label",{class:"row"},"Equipped",eq), h("label",{class:"row"},"Notch cost",cost));
+      return card;
+    });
+    const syncEquipped = () => {
+      if (Array.isArray(pd.equippedCharms)) pd.equippedCharms = CHARMS.map((_,i)=>i+1).filter(n=>pd["equippedCharm_"+n]);
+      if ("charmSlotsFilled" in pd) pd.charmSlotsFilled = used();
+    };
+    const each = fn => { CHARMS.forEach((_,i)=>fn(i+1)); syncEquipped(); markDirty(); render(); };
+    const action = h("select",{"aria-label":"Charm action"},
+      h("option",{value:""},"Choose an action…"),
+      h("option",{value:"give"},"Give player all charms"),
+      h("option",{value:"remove"},"Remove all charms"),
+      h("option",{value:"equip"},"Equip all charms"));
+    const runAction = h("button",{class:"btn primary",onclick(){
+      const v = action.value;
+      if (!v){ toast("Choose an action first."); return; }
+      if (v==="give"){ each(n=>{ pd["gotCharm_"+n]=true; }); toast("All 40 charms given."); }
+      if (v==="remove"){ each(n=>{ pd["gotCharm_"+n]=false; pd["equippedCharm_"+n]=false; }); toast("All charms removed and unequipped."); }
+      if (v==="equip"){ each(n=>{ pd["gotCharm_"+n]=true; pd["equippedCharm_"+n]=true; }); toast("All 40 charms equipped. You're heavily overcharmed unless you raise notches or lower costs."); }
+    }},"Apply");
+    const costIn = h("input",{type:"number",min:0,max:9,value:1,"aria-label":"Notch cost for every charm",style:"width:5em"});
+    const setAll = h("button",{class:"btn",onclick(){
+      const c = Math.max(0, Math.trunc(Number(costIn.value)));
+      if (!Number.isFinite(c)){ toast("Enter a whole number of notches."); return; }
+      each(n=>{ pd["charmCost_"+n]=c; }); toast(`Every charm now costs ${c} notch${c===1?"":"es"}.`);
+    }},"Set all costs");
+    const reset = h("button",{class:"btn",onclick(){
+      each(n=>{ pd["charmCost_"+n]=defaultCost(n); }); toast("All notch costs reset to the game's defaults.");
+    }},"Reset all costs to default");
+    const tools = h("div",{class:"bulk"},
+      h("div",{class:"tool"}, h("h3",{},"All charms"),
+        h("p",{class:"help"},"Applies to all 40 charms at once. Kingsoul and Grimmchild also depend on their states further down."),
+        h("div",{class:"toolbar"}, action, runAction)),
+      h("div",{class:"tool"}, h("h3",{},"Notch costs"),
+        h("p",{class:"help"},"Set one cost for every charm (0 makes them all free), or put every cost back to the game's default."),
+        h("div",{class:"toolbar"}, h("label",{class:"inline"},"Cost ",costIn), setAll),
+        h("div",{class:"toolbar"}, reset)));
+    return [ tools, notch, h("div",{class:"charms"}, cards),
+      h("h3",{},"Charm states"), h("div",{class:"grid"}, CHARM_STATES.map(([l,k])=>field(l,k))) ];
+  }},
+  items: { title:"Items & keys", needsSave:true, render(){
+    return [ h("div",{class:"grid"}, ITEMS.map(([l,k])=>field(l,k))) ];
+  }},
+  journal: { title:"Hunter's Journal", needsSave:true, render(){
+    const names = Object.keys(pd).filter(k=>/^killed[A-Z]/.test(k) && typeof pd[k]==="boolean").map(k=>k.slice(6))
+      .sort((a,b)=>jname(a).localeCompare(jname(b)));
+    const q = h("input",{type:"search",placeholder:"Filter creatures…","aria-label":"Filter creatures"});
+    if (pendingFilter){ q.value = pendingFilter; pendingFilter = null; }
+    const all = h("button",{class:"btn",onclick(){ names.forEach(n=>{ pd["killed"+n]=true; if (typeof pd["kills"+n]==="number") pd["kills"+n]=0; }); markDirty(); render(); toast("Every journal entry marked complete."); }},"Complete every entry");
+    const body = h("tbody");
+    const paint = () => { const f = q.value.toLowerCase();
+      body.replaceChildren(...names.filter(n=>`${n} ${jname(n)}`.toLowerCase().includes(f)).map(n=>h("tr",{"data-key":"killed"+n},
+        h("td",{}, h("span",{class:"jn"}, jname(n)), h("code",{class:"jid"}, n)),
+        h("td",{}, typedInput(()=>pd["killed"+n], v=>set("killed"+n,v), true, `${jname(n)} killed`)),
+        h("td",{}, typeof pd["kills"+n]==="number" ? typedInput(()=>pd["kills"+n], v=>set("kills"+n,v), 0, `${jname(n)} kills left`) : "—"),
+        h("td",{}, typeof pd["newData"+n]==="boolean" ? typedInput(()=>pd["newData"+n], v=>set("newData"+n,v), true, `${jname(n)} newData`) : "—")))); };
+    q.oninput = paint; paint();
+    return [ h("div",{class:"toolbar"}, q, all),
+      h("div",{class:"tablewrap"}, h("table",{}, h("thead",{}, h("tr",{}, h("th",{},"Creature"),h("th",{},"Killed"),h("th",{},"Kills left"),h("th",{},"newData"))), body)) ];
+  }},
+  world: { title:"World objects", needsSave:true, render(){
+    const sd = save.sceneData || {};
+    const lists = [["persistentBoolItems","Switches & doors","activated"],["persistentIntItems","Counters","value"],["geoRocks","Geo rocks","hitsLeft"]].filter(([k])=>Array.isArray(sd[k]));
+    if (!lists.length) return [h("p",{class:"lede"},"This save has no scene data.")];
+    let which = lists[0];
+    const q = h("input",{type:"search",placeholder:"Filter by area, room or object…","aria-label":"Filter world objects"});
+    const chips = h("div",{class:"toolbar"}, lists.map(l=>{ const c = h("button",{class:"chip","aria-pressed":String(l===which),onclick(){ which=l; chips.querySelectorAll(".chip").forEach(x=>x.setAttribute("aria-pressed",String(x===c))); paint(); }}, `${l[1]} (${sd[l[0]].length})`); return c; }));
+    const info = h("p",{class:"note"}), body = h("tbody");
+    const paint = () => {
+      const f = q.value.toLowerCase(), [key,,col] = which;
+      const rows = sd[key].filter(r=>`${r.sceneName} ${r.id} ${areaOf(r.sceneName)}`.toLowerCase().includes(f));
+      info.textContent = rows.length > 300 ? `Showing 300 of ${rows.length}. Filter by scene to narrow it down.` : `${rows.length} objects`;
+      body.replaceChildren(...rows.slice(0,300).map(r=>h("tr",{}, h("td",{},infoBtn(()=>describeObject(r,key), r.id)), h("td",{},areaOf(r.sceneName)), h("td",{},r.sceneName), h("td",{},r.id),
+        h("td",{}, typedInput(()=>r[col], v=>{ r[col]=v; markDirty(); }, r[col], `${r.id} ${col}`)),
+        h("td",{}, "semiPersistent" in r ? String(r.semiPersistent) : "—"))));
+    };
+    q.oninput = paint; paint();
+    return [ chips, h("div",{class:"toolbar"}, q), info,
+      h("div",{class:"tablewrap"}, h("table",{}, h("thead",{}, h("tr",{}, h("th",{},h("span",{class:"sr"},"Info")),h("th",{},"Area"),h("th",{},"Room"),h("th",{},"Object"),h("th",{},"State"),h("th",{},"Semi-persistent"))), body)) ];
+  }},
+  saves: { title:"Backups & save locations", needsSave:false, render(){
+    return [ h("div",{class:"backup",role:"note"}, h("p",{style:"margin:0"}, h("strong",{},"Keep a backup. "), "Copy your original save somewhere safe before you put an edited one in its place.")), ...guideNodes() ];
+  }},
+  all: { title:"All flags", needsSave:true, render(){
+    const keys = Object.keys(pd).sort((a,b)=>a.localeCompare(b));
+    const q = h("input",{type:"search",placeholder:`Search ${keys.length} fields`,"aria-label":"Search fields"});
+    if (pendingFilter){ q.value = pendingFilter; pendingFilter = null; }
+    let kind = "all";
+    const kinds = [["all","All"],["boolean","On/off"],["number","Numbers"],["string","Text"],["object","Lists & objects"]];
+    const chips = kinds.map(([k,l])=>{ const c=h("button",{class:"chip","aria-pressed":String(k===kind),onclick(){ kind=k; chips.forEach(x=>x.setAttribute("aria-pressed",String(x===c))); paint(); }},l); return c; });
+    const grid = h("div",{class:"grid"}), info = h("p",{class:"note"});
+    const paint = () => { const f = q.value.toLowerCase();
+      const hit = keys.filter(k=>k.toLowerCase().includes(f) && (kind==="all" || typeof pd[k]===kind || (kind==="object" && pd[k]===null)));
+      info.textContent = hit.length > 400 ? `Showing 400 of ${hit.length}. Search to narrow it down.` : `${hit.length} fields`;
+      grid.replaceChildren(...hit.slice(0,400).map(k=>field(k,k,{info:true}))); };
+    q.oninput = paint; paint();
+    return [ h("div",{class:"danger",role:"alert"},"WARNING: THESE FLAGS CAN BREAK YOUR SAVE! BE CAUTIOUS!!!"),
+      h("div",{class:"toolbar"}, q), h("div",{class:"toolbar"}, chips), info, grid ];
+  }},
+  raw: { title:"Raw JSON", needsSave:true, render(){
+    const ta = h("textarea",{class:"raw",spellcheck:"false","aria-label":"Save JSON"}); ta.value = JSON.stringify(save, null, 2);
+    const err = h("p",{class:"error",hidden:true});
+    return [ ta, h("div",{class:"toolbar",style:"margin-top:12px"},
+        h("button",{class:"btn primary",onclick(){ try { const s = JSON.parse(ta.value); if (!s.playerData) throw new Error("The JSON needs a playerData object."); save = s; pd = s.playerData; markDirty(); err.hidden = true; toast("JSON applied."); } catch(e){ err.hidden=false; err.textContent = e.message; } }},"Apply JSON"),
+        h("button",{class:"btn",onclick(){ ta.value = JSON.stringify(save,null,2); err.hidden = true; }},"Discard edits")), err ];
+  }}
+};
+
+function render(){
+  const ids = Object.keys(SECTIONS).filter(id => save || !SECTIONS[id].needsSave);
+  $("#nav").replaceChildren(...ids.map(id=>h("button",{"aria-current":String(id===current),onclick(){ current=id; render(); }}, SECTIONS[id].title)));
+  const s = SECTIONS[current];
+  const body = (s.needsSave && !save)
+    ? [h("p",{class:"lede"},"Open a save file to edit this section.")]
+    : s.render();
+  $("#main").replaceChildren(h("h2",{},s.title), infoPanel(current), ...body);
+  if (pendingFocus){
+    const el = document.querySelector(`[data-key="${CSS.escape(pendingFocus)}"]`); pendingFocus = null;
+    if (el){ el.scrollIntoView({block:"center",behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"}); el.classList.add("flash"); el.querySelector("input,select,textarea")?.focus({preventScroll:true}); }
+  }
+}
+function showSection(id){
+  current = id; $("#empty").hidden = true; $("#work").hidden = false; render();
+}
+
+/* ---------- Lookup ---------- */
+function buildIndex(){
+  const idx = [];
+  for (const [id,s] of Object.entries(SECTIONS)) idx.push({label:s.title, where:"Section", desc:INFO[id]?.about||"", text:`${s.title} ${INFO[id]?.about||""}`, go:()=>showSection(id)});
+  idx.push({label:"Game options (audio, video, controls)", where:"Note", desc:"Not stored in save slots, so they can't be edited here.", text:"settings options volume audio video resolution controls keybinds", go:()=>{ toast("Game options aren't in save files; change them in the game's Options menu."); }});
+  if (!save) return idx;
+  const seen = new Set();
+  const add = (label,key,sec) => { if (!(key in pd) && sec!=="all") return; seen.add(key);
+    idx.push({label, key, where:SECTIONS[sec].title, desc:DESC[key]||"", text:`${label} ${key} ${DESC[key]||""}`, go:()=>{ pendingFocus=key; showSection(sec); }}); };
+  OVERVIEW.forEach(([l,k])=>add(l,k,"overview")); add("Nail","nailSmithUpgrades","overview"); add("Nail damage","nailDamage","overview"); add("Steel Soul mode","permadeathMode","overview"); add("Respawn point (bench)","respawnScene","overview"); add("Respawn marker","respawnMarkerName","overview");
+  ABILITIES.forEach(([l,ks])=>{ add(l,ks[0],"abilities"); ks.slice(1).forEach(k=>seen.add(k)); });
+  SPELLS.forEach(([l,k,o])=>{ add(`${l} (${o.slice(1).join(", ")})`,k,"abilities"); });
+  ITEMS.forEach(([l,k])=>add(l,k,"items"));
+  CHARM_STATES.forEach(([l,k])=>add(l,k,"charms"));
+  CHARMS.forEach(([name,desc],i)=>{ const n=i+1; ["gotCharm_","equippedCharm_","charmCost_"].forEach(p=>seen.add(p+n));
+    if (("gotCharm_"+n) in pd) idx.push({label:name, key:"gotCharm_"+n, where:"Charms", desc, text:`${name} charm ${desc}`, go:()=>{ pendingFocus="gotCharm_"+n; showSection("charms"); }}); });
+  Object.keys(pd).filter(k=>/^killed[A-Z]/.test(k)).forEach(k=>{ const n=k.slice(6); ["killed","kills","newData"].forEach(p=>seen.add(p+n));
+    idx.push({label:jname(n), key:k, where:"Hunter's Journal", desc:"Journal entry", text:`${n} ${jname(n)} journal enemy`, go:()=>{ pendingFilter=n; pendingFocus=k; showSection("journal"); }}); });
+  Object.keys(pd).filter(k=>!seen.has(k)).forEach(k=>{ const d=describeKey(k).paras[0]; idx.push({label:pretty(k), key:k, where:"All flags", desc:d, text:`${k} ${pretty(k)} ${d}`, go:()=>{ pendingFilter=k; pendingFocus=k; showSection("all"); }}); });
+  return idx;
+}
+let INDEX = buildIndex(), sel = 0, hits = [];
+const lookup = $("#lookup"), results = $("#results");
+function search(){
+  const q = lookup.value.trim().toLowerCase();
+  if (!q){ results.hidden = true; lookup.setAttribute("aria-expanded","false"); return; }
+  const terms = q.split(/\s+/);
+  hits = INDEX.map(e=>{ const t = e.text.toLowerCase(), l = e.label.toLowerCase();
+      if (!terms.every(w=>t.includes(w))) return null;
+      return {e, score:(l===q?100:0)+(l.startsWith(q)?40:0)+(l.includes(q)?20:0)+(e.where==="Section"?10:0)+(e.where==="All flags"?-5:0)}; })
+    .filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,14).map(x=>x.e);
+  sel = 0;
+  results.replaceChildren(...(hits.length ? hits.map((e,i)=>h("button",{role:"option",class:i===sel?"sel":"",onmousedown(ev){ ev.preventDefault(); pick(i); }},
+      h("span",{class:"where"},e.where), e.label, e.key && e.key!==e.label ? [" ", h("code",{},e.key)] : null, e.desc ? h("span",{class:"d"},e.desc) : null))
+    : [h("div",{class:"none"}, save ? "Nothing matches. Try a shorter word." : "Nothing matches. Open a save to search its fields too.")]));
+  results.hidden = false; lookup.setAttribute("aria-expanded","true");
+}
+function pick(i){ const e = hits[i]; if (!e) return; results.hidden = true; lookup.value = ""; lookup.setAttribute("aria-expanded","false"); e.go(); }
+lookup.addEventListener("input", search);
+lookup.addEventListener("focus", ()=>{ if (lookup.value) search(); });
+lookup.addEventListener("blur", ()=>{ results.hidden = true; lookup.setAttribute("aria-expanded","false"); });
+lookup.addEventListener("keydown", e=>{
+  if (results.hidden) return;
+  if (e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); sel = (sel + (e.key==="ArrowDown"?1:-1) + hits.length) % Math.max(hits.length,1);
+    [...results.children].forEach((c,i)=>c.classList.toggle("sel",i===sel)); results.children[sel]?.scrollIntoView({block:"nearest"}); }
+  else if (e.key==="Enter"){ e.preventDefault(); pick(sel); }
+  else if (e.key==="Escape"){ results.hidden = true; }
+});
+document.addEventListener("keydown", e=>{ if (e.key==="/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){ e.preventDefault(); lookup.focus(); } });
+
+/* ---------- Load / save ---------- */
+async function loadFile(file){
+  const err = $("#loadErr"); err.hidden = true;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const r = decodeSave(bytes);
+    const parsed = JSON.parse(r.json);
+    if (!parsed.playerData) throw new Error("The file decrypted, but has no playerData. Is this a Hollow Knight save?");
+    save = parsed; pd = parsed.playerData; format = r.format;
+    fileName = /\.dat$/i.test(file.name) ? file.name : "user1.dat";
+    dirty = false; $("#dirty").hidden = true; current = "overview";
+    $("#saveBtn").disabled = $("#exportJson").disabled = false;
+    $("#saveBtn").textContent = format === "json" ? "Save JSON" : "Save .dat";
+    INDEX = buildIndex(); showSection("overview"); toast(`Opened ${file.name}`);
+  } catch(e){
+    if (!save){ $("#empty").hidden = false; $("#work").hidden = true; err.hidden = false; err.textContent = e.message; } else toast(e.message);
+  }
+}
+
+const downloadsReady = (window.claude && typeof window.claude.use === "function") ? window.claude.use("downloads").catch(()=>null) : Promise.resolve(null);
+async function offer(name, data){
+  const dl = await downloadsReady;
+  if (!dl){ // running as a local file: plain browser download
+    const url = URL.createObjectURL(new Blob([data])); const a = h("a",{href:url,download:name});
+    document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 2000); return true;
+  }
+  try {
+    if (/\.dat$/i.test(name)){ // .dat isn't an allowed download type here, so wrap it in a zip
+      const zip = new JSZip(); zip.file(name, data);
+      data = await zip.generateAsync({type:"blob"}); name = name.replace(/\.dat$/i,"") + ".zip";
+    }
+    await dl.save({filename:name, data}); return true;
+  } catch(e){
+    if (e && e.code === "declined") return false;
+    toast("Couldn't save the file here: " + (e?.message || "unknown error")); return false;
+  }
+}
+$("#saveBtn").onclick = async () => {
+  const json = JSON.stringify(save);
+  const ok = format === "json" ? await offer(fileName.replace(/\.dat$/i,".json"), json) : await offer(fileName, encodeSave(json));
+  if (ok){ dirty = false; $("#dirty").hidden = true; toast("Saved. Replace the file in your save folder with this one."); }
+};
+$("#exportJson").onclick = () => offer(fileName.replace(/\.dat$/i,"") + ".json", JSON.stringify(save, null, 2));
+$("#openBtn").onclick = () => $("#fileIn").click();
+$("#fileIn").onchange = e => { if (e.target.files[0]) loadFile(e.target.files[0]); e.target.value = ""; };
+const zone = $("#zone");
+zone.onclick = () => $("#fileIn").click();
+zone.onkeydown = e => { if (e.key==="Enter"||e.key===" "){ e.preventDefault(); $("#fileIn").click(); } };
+["dragenter","dragover"].forEach(t=>document.addEventListener(t,e=>{ e.preventDefault(); zone.classList.add("over"); }));
+["dragleave","drop"].forEach(t=>document.addEventListener(t,e=>{ e.preventDefault(); zone.classList.remove("over"); }));
+document.addEventListener("drop", e => { const f = e.dataTransfer?.files?.[0]; if (f) loadFile(f); });
+window.addEventListener("beforeunload", e => { if (dirty){ e.preventDefault(); e.returnValue = ""; } });
+</script>
+</body>
+</html>
